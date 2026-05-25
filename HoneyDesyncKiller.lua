@@ -13,18 +13,61 @@ local workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- // SECURITY: ANTI-KICK & DYNAMIC KEYS
+-- // SECURITY: ADONIS BYPASS & ANTI-KICK
 task.spawn(function()
     pcall(function()
-        for k, v in pairs(getgc(true)) do
-            if type(v) == "table" and rawget(v, "indexInstance") then
-                if type(v.indexInstance) == "table" and v.indexInstance[1] == "kick" then
+        local debug_info = getrenv().debug.info
+        local x, y
+        local verbose = false
+
+        if setthreadidentity then setthreadidentity(2) end
+
+        for _, v in pairs(getgc(true)) do
+            if type(v) == "table" then
+                -- Adonis Detection Bypass
+                local a = rawget(v, "Detected")
+                local b = rawget(v, "Kill")
+            
+                if type(a) == "function" and not x then
+                    x = a
+                    hookfunction(x, function(c, f, n)
+                        if c ~= "_" and verbose then
+                            warn("Adonis AntiCheat flagged\nMethod: " .. tostring(c) .. "\nInfo: " .. tostring(f))
+                        end
+                        return true
+                    end)
+                end
+
+                if rawget(v, "Variables") and rawget(v, "Process") and type(b) == "function" and not y then
+                    y = b
+                    hookfunction(y, function(f)
+                        if verbose then
+                            warn("Adonis AntiCheat tried to kill (fallback): " .. tostring(f))
+                        end
+                    end)
+                end
+
+                -- Original Kick Bypass
+                if rawget(v, "indexInstance") and type(v.indexInstance) == "table" and v.indexInstance[1] == "kick" then
                     setreadonly(v, false)
                     v.tvk = {"kick", function() return workspace:WaitForChild("") end}
                     setreadonly(v, true)
                 end
             end
         end
+
+        if debug_info then
+            local oldDebugInfo; oldDebugInfo = hookfunction(debug_info, newcclosure(function(...)
+                local a, f = ...
+                if x and a == x then
+                    if verbose then warn("Adonis bypass triggered (debug.info)") end
+                    return coroutine.yield(coroutine.running())
+                end
+                return oldDebugInfo(...)
+            end))
+        end
+
+        if setthreadidentity then setthreadidentity(7) end
     end)
 end)
 
