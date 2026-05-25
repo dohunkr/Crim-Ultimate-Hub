@@ -1,6 +1,5 @@
--- // HONEY x CRAVEX x YUMMY HUB v7.1 - THE ULTIMATE CRIMINALITY SCRIPT
--- // EVERY FEATURE FROM ALL THREE HUBS MERGED INTO ONE
--- // SLEEK YUMMY-STYLE TABBED UI | MAXIMUM STEALTH | ANTI-BAN
+-- // HONEY HUB v7.2 - THE ULTIMATE CRIMINALITY SCRIPT
+-- // MERGED: HONEY x CRAVEX x YUMMY
 -- // FEATURES: ANTI-DESYNC (SELF & KILLER), RAGEBOT, FLY, ESP, ETC.
 
 local Players = game:GetService("Players")
@@ -35,7 +34,7 @@ local function get_key(salt)
     return st and st.Value - salt or tick() - salt
 end
 
--- // CONFIGURATION (TOTAL MERGE v7.1)
+-- // CONFIGURATION (HoneyHub v7.2)
 local CONFIG = {
     -- Combat
     RAGEBOT = true,
@@ -49,7 +48,7 @@ local CONFIG = {
     -- Visuals
     PLAYER_ESP = true,
     ITEM_ESP = false,
-    DESYNC_ESP = true, -- // Anti-Desync Killer (Detects others)
+    DESYNC_ESP = true,
     FULLBRIGHT = false,
     TRACERS = false,
     
@@ -59,9 +58,9 @@ local CONFIG = {
     SPEED = 16,
     FLY_SPEED = 50,
     ANTI_AFK = true,
-    SELF_DESYNC = false, -- // Anti-Desync Self (Protects user)
+    SELF_DESYNC = false,
     
-    -- Misc/Auto
+    -- Misc
     INF_STAMINA = true,
     AUTO_HEAL = false,
     AUTO_LOCKPICK = false,
@@ -73,24 +72,26 @@ local CONFIG = {
     SALT_GUN = 28951,
     SALT_MELEE = 38506,
     BUTTER = "\240\159\141\158",
-    DESYNC_THRESH = 50
+    DESYNC_THRESH = 50,
+    TARGET_REFRESH_RATE = 0.1
 }
 
 local active = true
 local connections = {}
 local closestTarget = nil
 local lastFire, lastMelee = 0, 0
+local trackData = {}
 
--- // UI: YUMMY-STYLE TABBED INTERFACE
+-- // UI: HoneyHub INTERFACE
 local function createUI()
-    if LocalPlayer.PlayerGui:FindFirstChild("YummyHoney") then LocalPlayer.PlayerGui.YummyHoney:Destroy() end
-    local sg = Instance.new("ScreenGui", LocalPlayer.PlayerGui); sg.Name = "YummyHoney"; sg.ResetOnSpawn = false
+    if LocalPlayer.PlayerGui:FindFirstChild("HoneyHubUI") then LocalPlayer.PlayerGui.HoneyHubUI:Destroy() end
+    local sg = Instance.new("ScreenGui", LocalPlayer.PlayerGui); sg.Name = "HoneyHubUI"; sg.ResetOnSpawn = false
 
     local main = Instance.new("Frame", sg)
     main.Size = UDim2.new(0, 500, 0, 380); main.Position = UDim2.new(0.5, -250, 0.5, -190)
     main.BackgroundColor3 = Color3.fromRGB(25, 25, 25); main.BorderSizePixel = 0
     Instance.new("UICorner", main).CornerRadius = UDim.new(0, 8)
-    local stroke = Instance.new("UIStroke", main); stroke.Color = Color3.fromRGB(45, 45, 45); stroke.Thickness = 2
+    local stroke = Instance.new("UIStroke", main); stroke.Color = Color3.fromRGB(100, 100, 255); stroke.Thickness = 2
 
     -- Sidebar
     local side = Instance.new("Frame", main)
@@ -98,8 +99,8 @@ local function createUI()
     Instance.new("UICorner", side).CornerRadius = UDim.new(0, 8)
 
     local title = Instance.new("TextLabel", side)
-    title.Size = UDim2.new(1, 0, 0, 40); title.Text = "ULTIMATE v7.1"; title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.Font = Enum.Font.SourceSansBold; title.TextSize = 14; title.BackgroundTransparency = 1
+    title.Size = UDim2.new(1, 0, 0, 40); title.Text = "HONEY HUB"; title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.SourceSansBold; title.TextSize = 16; title.BackgroundTransparency = 1
 
     local tabContainer = Instance.new("Frame", side)
     tabContainer.Size = UDim2.new(1, 0, 1, -80); tabContainer.Position = UDim2.new(0, 0, 0, 40); tabContainer.BackgroundTransparency = 1
@@ -120,7 +121,7 @@ local function createUI()
         page.ScrollBarThickness = 2; Instance.new("UIListLayout", page).Padding = UDim.new(0, 5)
 
         btn.MouseButton1Click:Connect(function()
-            for _, p in pairs(pages:GetChildren()) do p.Visible = false end
+            for _, p in pairs(pages:GetChildren()) do if p:IsA("ScrollingFrame") then p.Visible = false end end
             for _, b in pairs(tabContainer:GetChildren()) do if b:IsA("TextButton") then b.BackgroundColor3 = Color3.fromRGB(35, 35, 35) end end
             page.Visible = true; btn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
         end)
@@ -147,7 +148,6 @@ local function createUI()
         end)
     end
 
-    -- Populate Tabs (Updated for v7.1)
     addToggle(combatPage, "Ragebot Engine", "RAGEBOT")
     addToggle(combatPage, "Silent Aim", "SILENT_AIM")
     addToggle(combatPage, "Wallbang Mode", "WALLBANG")
@@ -164,7 +164,7 @@ local function createUI()
     addToggle(movePage, "Fly Engine", "FLY")
     addToggle(movePage, "Noclip Ghost", "NOCLIP")
     addToggle(movePage, "Anti-AFK", "ANTI_AFK")
-    addToggle(movePage, "Self Anti-Desync", "SELF_DESYNC") -- // New defensive feature
+    addToggle(movePage, "Self Anti-Desync", "SELF_DESYNC")
     
     addToggle(miscPage, "Infinite Stamina", "INF_STAMINA")
     addToggle(miscPage, "Auto Heal", "AUTO_HEAL")
@@ -189,6 +189,7 @@ end
 
 -- // CORE LOGIC
 local function isVisible(p)
+    if not p then return false end
     if CONFIG.WALLBANG then return true end
     local res = workspace:Raycast(Camera.CFrame.Position, p.Position - Camera.CFrame.Position, RaycastParams.new())
     return res == nil or res.Instance:IsDescendantOf(p.Parent)
@@ -197,20 +198,42 @@ end
 local function applyVisuals(plr)
     local char = plr.Character
     if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
     if CONFIG.PLAYER_ESP and plr ~= LocalPlayer then
-        local r = char:FindFirstChild("HumanoidRootPart")
-        if r and not r:FindFirstChild("ESP") then
-            local b = Instance.new("BillboardGui", r); b.Name = "ESP"; b.Size = UDim2.new(0, 200, 0, 50); b.AlwaysOnTop = true
+        if not root:FindFirstChild("ESP") then
+            local b = Instance.new("BillboardGui", root); b.Name = "ESP"; b.Size = UDim2.new(0, 200, 0, 50); b.AlwaysOnTop = true
             local t = Instance.new("TextLabel", b); t.Size = UDim2.new(1, 0, 1, 0); t.BackgroundTransparency = 1; t.TextColor3 = Color3.new(1,1,1); t.Font = 3; t.TextSize = 12
             connections[plr.Name] = RunService.Heartbeat:Connect(function()
-                if not r.Parent or not CONFIG.PLAYER_ESP then b:Destroy(); return end
-                t.Text = plr.Name .. " [" .. math.floor((r.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude) .. "m]"
+                if not root.Parent or not CONFIG.PLAYER_ESP then b:Destroy(); return end
+                t.Text = plr.Name .. " [" .. math.floor((root.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude) .. "m]"
             end)
         end
     end
-    if CONFIG.DESYNC_ESP and char:FindFirstChild("HumanoidRootPart") and char.HumanoidRootPart.AssemblyLinearVelocity.Magnitude > CONFIG.DESYNC_THRESH then
-        local h = char:FindFirstChild("Highlight") or Instance.new("Highlight", char)
-        h.FillColor = Color3.fromRGB(0, 162, 255); h.OutlineColor = Color3.fromRGB(0, 162, 255)
+
+    -- Enhanced Desync Detection
+    if CONFIG.DESYNC_ESP then
+        local track = trackData[plr] or { pos = root.Position, lastUpdate = tick() }
+        trackData[plr] = track
+        
+        local isDesync = root.AssemblyLinearVelocity.Magnitude > CONFIG.DESYNC_THRESH
+        if not isDesync and (root.Position - track.pos).Magnitude > 5 and (tick() - track.lastUpdate) < 0.05 then
+            isDesync = true -- Rapid jitter detection
+        end
+        track.pos = root.Position; track.lastUpdate = tick()
+
+        if isDesync then
+            local h = char:FindFirstChild("Highlight") or Instance.new("Highlight", char)
+            h.FillColor = Color3.fromRGB(0, 162, 255); h.OutlineColor = Color3.fromRGB(255, 0, 0); h.DepthMode = 0
+            if char:FindFirstChild("Head") and not char.Head:FindFirstChild("DesyncTag") then
+                local tag = Instance.new("BillboardGui", char.Head); tag.Name = "DesyncTag"; tag.Size = UDim2.new(0, 100, 0, 50); tag.AlwaysOnTop = true
+                local label = Instance.new("TextLabel", tag); label.Size = UDim2.new(1, 0, 1, 0); label.BackgroundTransparency = 1; label.Text = "DESYNC USER"; label.TextColor3 = Color3.new(1,0,0); label.Font = 4; label.TextSize = 14
+            end
+        else
+            if char:FindFirstChild("Highlight") then char.Highlight:Destroy() end
+            if char:FindFirstChild("Head") and char.Head:FindFirstChild("DesyncTag") then char.Head.DesyncTag:Destroy() end
+        end
     end
 end
 
@@ -220,18 +243,19 @@ task.spawn(function()
     while active do
         local best, dist = nil, CONFIG.RANGE
         for _, p in pairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") then
+            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
                 local h = p.Character.Head; local d = (h.Position - Camera.CFrame.Position).Magnitude
-                if d < dist and isVisible(h) then dist = d; best = p end
+                if d < dist and isVisible(h) then 
+                    dist = d
+                    best = p 
+                end
                 pcall(applyVisuals, p)
             end
         end
         closestTarget = best
 
-        -- // Self Anti-Desync Logic (Stealth Jitter)
         if CONFIG.SELF_DESYNC and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             local r = LocalPlayer.Character.HumanoidRootPart
-            -- Rapidly jitter position locally to desync hitboxes for others
             local oldCF = r.CFrame
             r.CFrame = r.CFrame * CFrame.new(math.random(-5, 5), 0, math.random(-5, 5))
             RunService.RenderStepped:Wait()
@@ -241,7 +265,7 @@ task.spawn(function()
         if CONFIG.INF_STAMINA then
             local ev = ReplicatedStorage:FindFirstChild("Events")
             if ev and ev:FindFirstChild("AInfStamina") then ev.AInfStamina:FireServer() end
-            if ev and ev:FindFirstChild("INSTNMA") then ev.INSTNMA:FireServer(get_key(CONFIG.SALT_MELEE)) end
+            if ev and ev:FindFirstChild("INSTNMA") then ev.INSTNMA:FireServer(get_key(CONFIG.SALT_MELEE)) end    
         end
 
         if CONFIG.ANTI_AFK and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -263,9 +287,9 @@ end)
 RunService.Heartbeat:Connect(function()
     if not active then return end
     local now = tick()
-    if CONFIG.RAGEBOT and closestTarget and now - lastFire > CONFIG.FIRE_RATE then
+    if CONFIG.RAGEBOT and closestTarget and closestTarget.Character and closestTarget.Character:FindFirstChild("Head") and now - lastFire > CONFIG.FIRE_RATE then
         local ev = ReplicatedStorage:FindFirstChild("Events")
-        if ev and closestTarget.Character:FindFirstChild("Head") then
+        if ev then
             local h = closestTarget.Character.Head; local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
             if tool then
                 if ev:FindFirstChild("GNX_S") then ev.GNX_S:FireServer(get_key(CONFIG.SALT_GUN), now, tool, "FDS9I83", Camera.CFrame.Position, {h.Position}, false) end
@@ -274,14 +298,16 @@ RunService.Heartbeat:Connect(function()
             lastFire = now
         end
     end
-    if CONFIG.MELEE_AURA and closestTarget and (closestTarget.Character.HumanoidRootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude < CONFIG.MELEE_RANGE then
-        if now - lastMelee > 0.3 then
-            local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
-            local ev = ReplicatedStorage:FindFirstChild("Events")
-            if tool and ev and ev:FindFirstChild("ZFKLF_H") then ev.ZFKLF_H:FireServer(CONFIG.BUTTER, tool, "k", 1, closestTarget.Character.Head, closestTarget.Character.Head.Position, Vector3.new(0,0,0), nil, nil) end
-            lastMelee = now
+    if CONFIG.MELEE_AURA and closestTarget and closestTarget.Character and closestTarget.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        if (closestTarget.Character.HumanoidRootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude < CONFIG.MELEE_RANGE then
+            if now - lastMelee > 0.3 then
+                local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                local ev = ReplicatedStorage:FindFirstChild("Events")
+                if tool and ev and ev:FindFirstChild("ZFKLF_H") then ev.ZFKLF_H:FireServer(CONFIG.BUTTER, tool, "k", 1, closestTarget.Character.Head, closestTarget.Character.Head.Position, Vector3.new(0,0,0), nil, nil) end        
+                lastMelee = now
+            end
         end
     end
 end)
 
-print("🔴 ULTIMATE HUB v7.1 LOADED - ANTI-DESYNC ENABLED")
+print("🔵 HONEY HUB v7.2 LOADED")
