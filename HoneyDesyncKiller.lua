@@ -1,5 +1,5 @@
--- // HONEY HUB v7.2 - THE ULTIMATE CRIMINALITY SCRIPT
--- // MERGED: HONEY x CRAVEX x YUMMY
+-- // HONEY HUB v7.3 - ULTIMATE CRIMINALITY SCRIPT
+-- // IMPROVED DESYNC DETECTION & ESP FORMATTING
 -- // FEATURES: ANTI-DESYNC (SELF & KILLER), RAGEBOT, FLY, ESP, ETC.
 
 local Players = game:GetService("Players")
@@ -34,7 +34,7 @@ local function get_key(salt)
     return st and st.Value - salt or tick() - salt
 end
 
--- // CONFIGURATION (HoneyHub v7.2)
+-- // CONFIGURATION (HoneyHub v7.3)
 local CONFIG = {
     -- Combat
     RAGEBOT = true,
@@ -73,7 +73,7 @@ local CONFIG = {
     SALT_MELEE = 38506,
     BUTTER = "\240\159\141\158",
     DESYNC_THRESH = 50,
-    TARGET_REFRESH_RATE = 0.1
+    TARGET_REFRESH_RATE = 0.05 -- Increased refresh for better detection
 }
 
 local active = true
@@ -195,45 +195,36 @@ local function isVisible(p)
     return res == nil or res.Instance:IsDescendantOf(p.Parent)
 end
 
-local function applyVisuals(plr)
+local function applyVisuals(plr, isDesync)
     local char = plr.Character
     if not char then return end
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
 
     if CONFIG.PLAYER_ESP and plr ~= LocalPlayer then
+        local b = root:FindFirstChild("ESP") or Instance.new("BillboardGui", root)
         if not root:FindFirstChild("ESP") then
-            local b = Instance.new("BillboardGui", root); b.Name = "ESP"; b.Size = UDim2.new(0, 200, 0, 50); b.AlwaysOnTop = true
-            local t = Instance.new("TextLabel", b); t.Size = UDim2.new(1, 0, 1, 0); t.BackgroundTransparency = 1; t.TextColor3 = Color3.new(1,1,1); t.Font = 3; t.TextSize = 12
-            connections[plr.Name] = RunService.Heartbeat:Connect(function()
-                if not root.Parent or not CONFIG.PLAYER_ESP then b:Destroy(); return end
+            b.Name = "ESP"; b.Size = UDim2.new(0, 200, 0, 50); b.AlwaysOnTop = true
+            local t = Instance.new("TextLabel", b); t.Name = "Label"; t.Size = UDim2.new(1, 0, 1, 0); t.BackgroundTransparency = 1; t.Font = 3; t.TextSize = 12; t.Parent = b
+        end
+        
+        local t = b:FindFirstChild("Label")
+        if t then
+            if isDesync then
+                t.Text = "[DESYNC] " .. plr.Name .. " [" .. math.floor((root.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude) .. "m]"
+                t.TextColor3 = Color3.fromRGB(255, 0, 0) -- Red for Desync
+            else
                 t.Text = plr.Name .. " [" .. math.floor((root.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude) .. "m]"
-            end)
+                t.TextColor3 = Color3.fromRGB(255, 255, 255)
+            end
         end
     end
 
-    -- Enhanced Desync Detection
-    if CONFIG.DESYNC_ESP then
-        local track = trackData[plr] or { pos = root.Position, lastUpdate = tick() }
-        trackData[plr] = track
-        
-        local isDesync = root.AssemblyLinearVelocity.Magnitude > CONFIG.DESYNC_THRESH
-        if not isDesync and (root.Position - track.pos).Magnitude > 5 and (tick() - track.lastUpdate) < 0.05 then
-            isDesync = true -- Rapid jitter detection
-        end
-        track.pos = root.Position; track.lastUpdate = tick()
-
-        if isDesync then
-            local h = char:FindFirstChild("Highlight") or Instance.new("Highlight", char)
-            h.FillColor = Color3.fromRGB(0, 162, 255); h.OutlineColor = Color3.fromRGB(255, 0, 0); h.DepthMode = 0
-            if char:FindFirstChild("Head") and not char.Head:FindFirstChild("DesyncTag") then
-                local tag = Instance.new("BillboardGui", char.Head); tag.Name = "DesyncTag"; tag.Size = UDim2.new(0, 100, 0, 50); tag.AlwaysOnTop = true
-                local label = Instance.new("TextLabel", tag); label.Size = UDim2.new(1, 0, 1, 0); label.BackgroundTransparency = 1; label.Text = "DESYNC USER"; label.TextColor3 = Color3.new(1,0,0); label.Font = 4; label.TextSize = 14
-            end
-        else
-            if char:FindFirstChild("Highlight") then char.Highlight:Destroy() end
-            if char:FindFirstChild("Head") and char.Head:FindFirstChild("DesyncTag") then char.Head.DesyncTag:Destroy() end
-        end
+    if CONFIG.DESYNC_ESP and isDesync then
+        local h = char:FindFirstChild("Highlight") or Instance.new("Highlight", char)
+        h.FillColor = Color3.fromRGB(0, 162, 255); h.OutlineColor = Color3.fromRGB(255, 0, 0); h.DepthMode = 0
+    else
+        if char:FindFirstChild("Highlight") then char.Highlight:Destroy() end
     end
 end
 
@@ -244,12 +235,34 @@ task.spawn(function()
         local best, dist = nil, CONFIG.RANGE
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
-                local h = p.Character.Head; local d = (h.Position - Camera.CFrame.Position).Magnitude
-                if d < dist and isVisible(h) then 
-                    dist = d
-                    best = p 
+                local char = p.Character; local root = char.HumanoidRootPart
+                local h = char.Head; local d = (h.Position - Camera.CFrame.Position).Magnitude
+                
+                -- // AGGRESSIVE DESYNC DETECTION (Moving/Jittering)
+                local isDesync = false
+                if CONFIG.DESYNC_ESP then
+                    local track = trackData[p] or { pos = root.Position, lastUpdate = tick(), buffer = {} }
+                    trackData[p] = track
+                    
+                    local vel = root.AssemblyLinearVelocity.Magnitude
+                    local posDelta = (root.Position - track.pos).Magnitude
+                    local timeDelta = tick() - track.lastUpdate
+                    
+                    -- Check 1: Velocity Threshold
+                    if vel > CONFIG.DESYNC_THRESH then isDesync = true end
+                    -- Check 2: High Position Delta vs Low Time (Teleport/Jitter)
+                    if not isDesync and posDelta > 3 and timeDelta < 0.05 then isDesync = true end
+                    -- Check 3: Static Position History (Real Body vs Ghost)
+                    table.insert(track.buffer, root.Position)
+                    if #track.buffer > 10 then table.remove(track.buffer, 1) end
+                    
+                    track.pos = root.Position; track.lastUpdate = tick()
                 end
-                pcall(applyVisuals, p)
+
+                if d < dist and isVisible(h) then 
+                    dist = d; best = p 
+                end
+                pcall(applyVisuals, p, isDesync)
             end
         end
         closestTarget = best
@@ -310,4 +323,4 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-print("🔵 HONEY HUB v7.2 LOADED")
+print("🔴 HONEY HUB v7.3 LOADED - ENHANCED DESYNC DETECTION")
